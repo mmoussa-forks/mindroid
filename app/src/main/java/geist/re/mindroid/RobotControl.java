@@ -2,8 +2,6 @@ package geist.re.mindroid;
 
 import android.app.ProgressDialog;
 import android.content.DialogInterface;
-import android.media.AudioManager;
-import android.media.SoundPool;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.design.widget.FloatingActionButton;
@@ -13,6 +11,9 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.lang.ref.WeakReference;
+import java.util.Locale;
 
 import geist.re.mindlib.RobotControlActivity;
 import geist.re.mindlib.RobotService;
@@ -36,19 +37,12 @@ public class RobotControl extends RobotControlActivity {
     TextView zText;
 
 
-
-
-
-
-    /**************************************************************/
-    /**************************************************************/
-    /**************************************************************/
     /**************************************************************/
 
     @Override
     public void commandProgram() throws SensorDisconnectedException {
         super.commandProgram();
-        /*************** START YOUR PROGRAM HERE ***************/
+        /* START YOUR PROGRAM HERE ***************/
         robot.executeMotorTask(robot.motorA.run(-10,180));
         robot.touchSensor.connect(Sensor.Port.ONE);
 
@@ -69,21 +63,26 @@ public class RobotControl extends RobotControlActivity {
     @Override
     public void onVoiceCommand(String message) {
         super.onVoiceCommand(message);
-        /*************** HANDLE VOICE MESSAGE HERE ***************/
+        /* HANDLE VOICE MESSAGE HERE ***************/
 
 
-        if(message.equals("run forward")){
-            speakBack("No problem");
-            robot.executeSyncTwoMotorTask(robot.motorA.run(30),robot.motorB.run(30));
-        }else if(message.equals("stop")){
-            speakBack("It was a pleasure");
-            robot.executeSyncTwoMotorTask(robot.motorA.stop(), robot.motorB.stop());
-        }else if(message.equals("run backward")) {
-            speakBack("I'm executing");
-            robot.executeSyncTwoMotorTask(robot.motorA.run(-30), robot.motorB.run(-30));
-        }else{
-            Log.d(TAG, "Received wrong command: "+message);
-            //error();
+        switch (message) {
+            case "run forward":
+                speakBack("No problem");
+                robot.executeSyncTwoMotorTask(robot.motorA.run(30), robot.motorB.run(30));
+                break;
+            case "stop":
+                speakBack("It was a pleasure");
+                robot.executeSyncTwoMotorTask(robot.motorA.stop(), robot.motorB.stop());
+                break;
+            case "run backward":
+                speakBack("I'm executing");
+                robot.executeSyncTwoMotorTask(robot.motorA.run(-30), robot.motorB.run(-30));
+                break;
+            default:
+                Log.d(TAG, "Received wrong command: " + message);
+                //error();
+                break;
         }
     }
 
@@ -92,19 +91,17 @@ public class RobotControl extends RobotControlActivity {
     @Override
     protected synchronized void onGestureCommand(double x, double y, double z) {
         displayValues(x,y,z);
-        /*************** HANDLE GESTURES HERE ***************/
+        /* HANDLE GESTURES HERE */
     }
 
 
-    /**************************************************************/
-    /**************************************************************/
-    /**************************************************************/
+
     /**************************************************************/
 
     private void displayValues(double x, double y, double z){
-        xText.setText(Double.toString(x));
-        yText.setText(Double.toString(y));
-        zText.setText(Double.toString(z));
+        xText.setText(String.format(Locale.getDefault(),"%f", x));
+        yText.setText(String.format(Locale.getDefault(), "%f", y));
+        zText.setText(String.format(Locale.getDefault(), "%f", z));
     }
     private void pause(int time) {
         try {
@@ -129,19 +126,19 @@ public class RobotControl extends RobotControlActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_robot_control);
-        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        start = (FloatingActionButton) findViewById(R.id.start);
-        stop = (FloatingActionButton) findViewById(R.id.stop);
-        voice = (FloatingActionButton) findViewById(R.id.voice);
-        connect = (FloatingActionButton) findViewById(R.id.connect);
-        orientation = (FloatingActionButton) findViewById(R.id.orientationButton);
+        start = findViewById(R.id.start);
+        stop = findViewById(R.id.stop);
+        voice = findViewById(R.id.voice);
+        connect = findViewById(R.id.connect);
+        orientation = findViewById(R.id.orientationButton);
 
 
-        xText = (TextView) findViewById(R.id.xText);
-        yText = (TextView) findViewById(R.id.yText);
-        zText = (TextView) findViewById(R.id.zText);
+        xText = findViewById(R.id.xText);
+        yText = findViewById(R.id.yText);
+        zText = findViewById(R.id.zText);
 
 
         start.setVisibility(FloatingActionButton.INVISIBLE);
@@ -202,18 +199,23 @@ public class RobotControl extends RobotControlActivity {
             }
             return;
         }
-        new AsyncTask<Void, Void, Exception>(){
-            @Override
-            protected Exception doInBackground(Void... voids) {
-                try {
-                    commandProgram();
-                } catch (SensorDisconnectedException e) {
-                    e.printStackTrace();
-                }
-                return null;
-            }
-        }.execute();
+        new StartTask(this).execute();
 
+    }
+    private static class StartTask extends AsyncTask<Void, Void, Exception>{
+        private WeakReference<RobotControl> activityReference;
+        StartTask(RobotControl context){
+            activityReference = new WeakReference<>(context);
+        }
+        @Override
+        protected Exception doInBackground(Void... voids) {
+            try{
+                activityReference.get().commandProgram();
+            } catch (SensorDisconnectedException e){
+                e.printStackTrace();
+            }
+            return null;
+        }
     }
     public void voice(View v){
         if(robot == null || robot.getConnectionState() != RobotService.CONN_STATE_CONNECTED){
@@ -243,51 +245,60 @@ public class RobotControl extends RobotControlActivity {
             Toast.makeText(this,"Error, robot service is down...",Toast.LENGTH_LONG).show();
         } else if(robot.getConnectionState() != RobotService.CONN_STATE_CONNECTED &&
                 robot.getConnectionState() != RobotService.CONN_STATE_CONNECTING){
-            new AsyncTask<Void, Void, Exception>(){
-                ProgressDialog progress = new ProgressDialog(RobotControl.this);
-                boolean dismissed = false;
+            new ConnectTask(this).execute();
 
+        }
+    }
+
+    private static class ConnectTask extends AsyncTask<Void, Void, Exception>{
+        ProgressDialog progress;
+        boolean dismissed;
+        private WeakReference<RobotControl> activityReference;
+
+        ConnectTask(RobotControl context){
+            activityReference = new WeakReference<>(context);
+            progress = new ProgressDialog(activityReference.get());
+            dismissed = false;
+        }
+
+        @Override
+        protected void onPreExecute() {
+            progress.setMessage("Connecting...");
+            progress.setTitle("Connecting to robot");
+            progress.setCancelable(false);
+            progress.setButton(DialogInterface.BUTTON_NEGATIVE, "Cancel", new DialogInterface.OnClickListener() {
                 @Override
-                protected void onPreExecute() {
-                    progress.setMessage("Connecting...");
-                    progress.setTitle("Connecting to robot");
-                    progress.setCancelable(false);
-                    progress.setButton(DialogInterface.BUTTON_NEGATIVE, "Cancel", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            dialog.dismiss();
-                            dismissed = true;
-                        }
-                    });
-                    progress.show();
+                public void onClick(DialogInterface dialog, int which) {
+                    dialog.dismiss();
+                    dismissed = true;
                 }
+            });
+            progress.show();
+        }
 
-                @Override
-                protected Exception doInBackground(Void... voids) {
-                    Exception ex = null;
-                    robot.connectToRobot(ROBOT_NAME);
-                    while(robot.getConnectionState() != RobotService.CONN_STATE_CONNECTED){
-                        try {
-                            Thread.sleep(500);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
-                        if(dismissed) break;
-                        if(robot.getConnectionState() == RobotService.CONN_STATE_DISCONNECTED){
-                            robot.connectToRobot(ROBOT_NAME);
-                        }
-                    }
-                    return ex;
+        @Override
+        protected Exception doInBackground(Void... voids) {
+            Exception ex = null;
+
+            activityReference.get().robot.connectToRobot(ROBOT_NAME);
+            while(activityReference.get().robot.getConnectionState() != RobotService.CONN_STATE_CONNECTED){
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    ex = e;
+                    e.printStackTrace();
                 }
-
-                @Override
-                protected void onPostExecute(Exception e) {
-                    progress.dismiss();
+                if(dismissed) break;
+                if(activityReference.get().robot.getConnectionState() == RobotService.CONN_STATE_DISCONNECTED){
+                    activityReference.get().robot.connectToRobot(ROBOT_NAME);
                 }
-            }.execute();
+            }
+            return ex;
+        }
 
-
-
+        @Override
+        protected void onPostExecute(Exception e) {
+            progress.dismiss();
         }
     }
 
